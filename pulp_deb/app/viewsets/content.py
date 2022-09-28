@@ -1,8 +1,11 @@
 from gettext import gettext as _  # noqa
 
+from django_filters import Filter
+from pulpcore.plugin.models import RepositoryVersion
 from pulpcore.plugin.viewsets import (
-    ContentViewSet,
     ContentFilter,
+    ContentViewSet,
+    NamedModelViewSet,
     SingleArtifactContentUploadViewSet,
 )
 
@@ -36,10 +39,119 @@ class GenericContentViewSet(SingleArtifactContentUploadViewSet):
     filterset_class = GenericContentFilter
 
 
+class ContentRelationshipFilter(Filter):
+    """
+    Base class for filters that allow you to ask meaningful questions about the relationships of
+    deb-specific content types. Subclasses must provide a HELP message and implement _filter.
+
+    The value for all these filters is a string that is a comma-separated 2-tuple, where the second
+    value is the HREF of the RepositoryVersion you care about. This is logically necessary if you
+    want to ask any question beyond "list Package|ReleaseComponent|whatever that were ever at any
+    point in this Repository|Release|whatever". I will try to explain by example.
+
+    Question: "What Packages are in the most recent RepositoryVersion of a Release?"
+
+    Imagine we have a very simple repo with two packages and two releases, and this state is stored
+    in RepositoryVersion1:
+    Repository -> Release1 -> ReleaseComponent1 -> PackageReleaseComponent1 -> Package1
+                                                -> PackageReleaseComponent2 -> Package2
+               -> Release2 -> ReleaseComponent2 -> PackageReleaseComponent3 -> Package2
+
+    We then update the repo to remove Package2 from ReleaseComponent1 and this state gets stored
+    in RepositoryVersion2:
+    Repository -> Release1 -> ReleaseComponent1 -> PackageReleaseComponent1 -> Package1
+               -> Release2 -> ReleaseComponent2 -> PackageReleaseComponent3 -> Package2
+
+    We could try answer the question using the existing ContentFilter.repository_version filter in
+    conjunction with a new filter that naively follows the foreign key references in the database:
+    packages.filter(deb_packagereleasecomponent__release_component__release=release_uuid)
+
+    What Django does if you call two separate filters is use the first to filter the QuerySet,
+    then use the second to filter the QuerySet further. This is *different* than calling
+    filter once with both conditions.
+    https://docs.djangoproject.com/en/dev/topics/db/queries/#spanning-multi-valued-relationships
+
+    Example: packages.filter("in RepositoryVersion2").filter("in Release1")
+    This will return both Package1 and Package2, which is not what we wanted. In the first filter it
+    looks and says "yep, both Package1 and Package2 are in RepositoryVersion2", and then the second
+    filter is applied and it says "yep, both Package1 and Package2 were in Release1 at some point".
+    This is because the linkage via PackageReleaseComponent2 still *exists*, it's just not in
+    RepositoryVersion2.
+
+    What we really _actually_ want is to apply _both_ conditions to the PackageReleaseComponent
+    mapping as an intermediate step, so both release_uuid and repository_version_href must be
+    passed to our new filter:
+    packages.filter(package.PRC in PRC.filter("in RepositoryVersion2", "in Release1"))
+
+    This guarantees that we are only considering Packages with both requirements, and returns only
+    Package1.
+    """
+
+    HELP = "Override with your value-specific help message"
+    GENERIC_HELP = """
+    Must be a comma-separated string: "value,repository_version_href"
+    value: %s
+    repository_version_href: The RepositoryVersion href to filter by
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("help_text", _(self.GENERIC_HELP) % _(self.HELP))
+        super().__init__(*args, **kwargs)
+
+    def filter(self, qs, value):
+        """
+        Args:
+            qs (django.db.models.query.QuerySet): The Content Queryset
+            value (string, "value,repository_version_href"): The values to filter by
+        """
+        if value is None:
+            # user didn't supply a value
+            return qs
+
+        my_value, repo_version_href = value.split(",", 1)
+        if not my_value or not repo_version_href or "," in repo_version_href:
+            # malformed input, bail
+            return qs
+
+        repo_version = NamedModelViewSet.get_resource(repo_version_href, RepositoryVersion)
+        prc_qs = models.PackageReleaseComponent.objects.filter(pk__in=repo_version.content)
+
+        return self._filter(qs, my_value, prc_qs)
+
+    def _filter(self, qs, value, prc_qs):
+        """
+        Args:
+            qs (django.db.models.query.QuerySet): The Content Queryset
+            value (string): The values to filter by
+            prc_qs (django.db.models.query.QuerySet): QuerySet of PackageReleaseComponents in
+                requested RepositoryVersion
+        """
+        raise NotImplementedError
+
+
+class PackageToReleaseComponentFilter(ContentRelationshipFilter):
+    HELP = "(ReleaseComponent uuid) Filter results where Package in ReleaseComponent"
+
+    def _filter(self, qs, value, prc_qs):
+        prc_qs = prc_qs.filter(release_component=value)
+        return qs.filter(deb_packagereleasecomponent__in=prc_qs)
+
+
+class PackageToReleaseFilter(ContentRelationshipFilter):
+    HELP = "(Release uuid) Filter results where Package in Release"
+
+    def _filter(self, qs, value, prc_qs):
+        prc_qs = prc_qs.filter(release_component__release=value)
+        return qs.filter(deb_packagereleasecomponent__in=prc_qs)
+
+
 class PackageFilter(ContentFilter):
     """
     FilterSet for Package.
     """
+
+    release_component = PackageToReleaseComponentFilter()
+    release = PackageToReleaseFilter()
 
     class Meta:
         model = models.Package
@@ -215,10 +327,20 @@ class InstallerFileIndexViewSet(ContentViewSet):
     filterset_class = InstallerFileIndexFilter
 
 
+class ReleaseToPackageFilter(ContentRelationshipFilter):
+    HELP = "(Package uuid) Filter results where Release contains Package"
+
+    def _filter(self, qs, value, prc_qs):
+        prc_qs = prc_qs.filter(package=value)
+        return qs.filter(deb_releasecomponent__deb_packagereleasecomponent__in=prc_qs)
+
+
 class ReleaseFilter(ContentFilter):
     """
     FilterSet for Release.
     """
+
+    package = ReleaseToPackageFilter()
 
     class Meta:
         model = models.Release
@@ -272,10 +394,20 @@ class ReleaseArchitectureViewSet(ContentViewSet):
     filterset_class = ReleaseArchitectureFilter
 
 
+class ReleaseComponentToPackageFilter(ContentRelationshipFilter):
+    HELP = "(Package uuid) Filter results where ReleaseComponent contains Package"
+
+    def _filter(self, qs, value, prc_qs):
+        prc_qs = prc_qs.filter(package=value)
+        return qs.filter(deb_packagereleasecomponent__in=prc_qs)
+
+
 class ReleaseComponentFilter(ContentFilter):
     """
     FilterSet for ReleaseComponent.
     """
+
+    package = ReleaseComponentToPackageFilter()
 
     class Meta:
         model = models.ReleaseComponent
