@@ -19,6 +19,10 @@ class ReleaseFile(Content):
     codename = models.TextField()
     suite = models.TextField()
     distribution = models.TextField()
+    version = models.TextField(null=True)
+    origin = models.TextField(null=True)
+    label = models.TextField(null=True)
+    description = models.TextField(null=True)
     components = models.TextField(blank=True)
     architectures = models.TextField(blank=True)
     relative_path = models.TextField()
@@ -32,6 +36,10 @@ class ReleaseFile(Content):
                 "codename",
                 "suite",
                 "distribution",
+                "version",
+                "origin",
+                "label",
+                "description",
                 "components",
                 "architectures",
                 "relative_path",

@@ -160,10 +160,11 @@ def publish(repository_version_pk, simple=False, structured=False, signing_servi
                         distribution=release.distribution,
                         components=components.values_list("component", flat=True),
                         architectures=architectures,
-                        description=repository.description,
-                        label=repository.name,
-                        version=str(repo_version.number),
+                        description=release.description or repository.description,
+                        label=release.label or repository.name,
+                        version=release.version or str(repo_version.number),
                         suite=release.suite,
+                        origin=release.origin,
                     )
 
                     for prc in PackageReleaseComponent.objects.filter(
@@ -244,6 +245,7 @@ class _ReleaseHelper:
         version,
         description=None,
         suite=None,
+        origin=None,
     ):
         self.publication = publication
         self.distribution = distribution
@@ -255,7 +257,7 @@ class _ReleaseHelper:
         # published Release file. As a "nice to have" for human readers, we try to use
         # the same order of fields that official Debian repositories use.
         self.release = deb822.Release()
-        self.release["Origin"] = "Pulp 3"
+        self.release["Origin"] = origin or "Pulp 3"
         if settings.PUBLISH_RELEASE_FILE_LABEL:
             self.release["Label"] = label
         if suite:
