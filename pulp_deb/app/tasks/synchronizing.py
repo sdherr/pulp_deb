@@ -384,6 +384,14 @@ class DebUpdateReleaseFileAttributes(Stage):
                         release_file.codename = release_file_dict["Codename"]
                     if "suite" in release_file_dict:
                         release_file.suite = release_file_dict["Suite"]
+                    if "version" in release_file_dict:
+                        release_file.version = release_file_dict["Version"]
+                    if "origin" in release_file_dict:
+                        release_file.origin = release_file_dict["Origin"]
+                    if "label" in release_file_dict:
+                        release_file.label = release_file_dict["Label"]
+                    if "description" in release_file_dict:
+                        release_file.description = release_file_dict["Description"]
 
                     if "components" in release_file_dict:
                         release_file.components = release_file_dict["Components"]
@@ -610,7 +618,13 @@ class DebFirstStage(Stage):
                 return
 
         release_unit = Release(
-            codename=release_file.codename, suite=release_file.suite, distribution=distribution
+            codename=release_file.codename,
+            suite=release_file.suite,
+            distribution=distribution,
+            version=release_file.version,
+            origin=release_file.origin,
+            label=release_file.label,
+            description=release_file.description,
         )
         release_dc = DeclarativeContent(content=release_unit)
         release = await self._create_unit(release_dc)

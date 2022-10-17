@@ -101,12 +101,37 @@ class ReleaseFileSerializer(MultipleArtifactContentSerializer):
     A serializer for ReleaseFile.
     """
 
-    codename = CharField(help_text='Codename of the release, i.e. "buster".', required=False)
+    codename = CharField(help_text='Codename of the release, e.g. "buster".', required=False)
 
-    suite = CharField(help_text='Suite of the release, i.e. "stable".', required=False)
+    suite = CharField(help_text='Suite of the release, e.g. "stable".', required=False)
 
     distribution = CharField(
-        help_text='Distribution of the release, i.e. "stable/updates".', required=True
+        help_text='Distribution of the release, e.g. "stable/updates".', required=True
+    )
+
+    version = CharField(
+        help_text='Version of the release, e.g. "1.0".',
+        required=False,
+        allow_null=True,
+        default=None,
+    )
+
+    origin = CharField(
+        help_text="Origin of the release.",
+        required=False,
+        allow_null=True,
+        default=None,
+    )
+
+    label = CharField(
+        help_text="Release label.",
+        required=False,
+        allow_null=True,
+        default=None,
+    )
+
+    description = CharField(
+        help_text="Description of the release.", required=False, allow_null=True, default=None
     )
 
     relative_path = CharField(help_text="Path of file relative to url.", required=False)
@@ -116,6 +141,10 @@ class ReleaseFileSerializer(MultipleArtifactContentSerializer):
             "codename",
             "suite",
             "distribution",
+            "version",
+            "origin",
+            "label",
+            "description",
             "relative_path",
         )
         model = ReleaseFile
@@ -611,10 +640,22 @@ class ReleaseSerializer(NoArtifactContentSerializer):
     codename = CharField()
     suite = CharField()
     distribution = CharField()
+    version = CharField(required=False, allow_null=True, default=None)
+    origin = CharField(required=False, allow_null=True, default=None)
+    label = CharField(required=False, allow_null=True, default=None)
+    description = CharField(required=False, allow_null=True, default=None)
 
     class Meta(NoArtifactContentSerializer.Meta):
         model = Release
-        fields = NoArtifactContentSerializer.Meta.fields + ("codename", "suite", "distribution")
+        fields = NoArtifactContentSerializer.Meta.fields + (
+            "codename",
+            "suite",
+            "distribution",
+            "version",
+            "origin",
+            "label",
+            "description",
+        )
 
 
 class ReleaseArchitectureSerializer(NoArtifactContentSerializer):

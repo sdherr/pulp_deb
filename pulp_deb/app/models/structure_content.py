@@ -22,10 +22,16 @@ class Release(Content):
     codename = models.TextField()
     suite = models.TextField()
     distribution = models.TextField()
+    version = models.TextField(null=True)
+    origin = models.TextField(null=True)
+    label = models.TextField(null=True)
+    description = models.TextField(null=True)
 
     class Meta:
         default_related_name = "%(app_label)s_%(model_name)s"
-        unique_together = (("codename", "suite", "distribution"),)
+        unique_together = (
+            ("codename", "suite", "distribution", "version", "origin", "label", "description"),
+        )
 
 
 class ReleaseArchitecture(Content):
