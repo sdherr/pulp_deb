@@ -100,7 +100,7 @@ class BasePackage(Content):
 
     def generate_filename(self, component=""):
         """Generate a new filename using name/version/arch."""
-        return self.filename(component, generate_name())
+        return self.filename(component, self.generate_name())
 
     repo_key_fields = ("package", "version", "architecture")
 
