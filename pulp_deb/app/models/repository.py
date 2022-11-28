@@ -1,5 +1,5 @@
 from django.db import models
-from pulpcore.plugin.models import Repository
+from pulpcore.plugin.models import BaseModel, Repository
 from pulpcore.plugin.repo_version_utils import remove_duplicates, validate_version_paths
 
 from pulp_deb.app.models import (
@@ -43,22 +43,23 @@ class AptRepository(Repository):
     signing_service = models.ForeignKey(
         AptReleaseSigningService, on_delete=models.PROTECT, null=True
     )
-    signing_service_release_overrides = models.JSONField(default=dict)
+    # Implicit signing_service_release_overrides
 
     class Meta:
         default_related_name = "%(app_label)s_%(model_name)s"
 
     def release_signing_service(self, release):
         """
-        Resolve and return the Signing Service specified in the overrides if there is one for this
-        release, else return self.signing_service.
+        Return the Signing Service specified in the overrides if there is one for this release,
+        else return self.signing_service.
         """
-        from pulpcore.plugin.viewsets import NamedModelViewSet
-
-        if release.distribution in self.signing_service_release_overrides:
-            url = self.signing_service_release_overrides[release.distribution]
-            return NamedModelViewSet().get_resource(url, AptReleaseSigningService)
-        return self.signing_service
+        if isinstance(release, Release):
+            release = release.distribution
+        try:
+            override = self.signing_service_release_overrides.get(release_distribution=release)
+            return override.signing_service
+        except AptRepositoryReleaseServiceOverride.DoesNotExist:
+            return self.signing_service
 
     def initialize_new_version(self, new_version):
         """
@@ -93,3 +94,18 @@ class AptRepository(Repository):
             if distribution in distributions:
                 raise DuplicateDistributionException(distribution)
             distributions.append(distribution)
+
+
+class AptRepositoryReleaseServiceOverride(BaseModel):
+    """
+    Override the SigningService that a single Release will use in this AptRepository.
+    """
+
+    repository = models.ForeignKey(
+        AptRepository, on_delete=models.CASCADE, related_name="signing_service_release_overrides"
+    )
+    signing_service = models.ForeignKey(AptReleaseSigningService, on_delete=models.PROTECT)
+    release_distribution = models.TextField()
+
+    class Meta:
+        unique_together = (("repository", "release_distribution"),)

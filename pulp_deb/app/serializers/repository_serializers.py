@@ -1,17 +1,42 @@
 from gettext import gettext as _
+from django.db import transaction
+from pulpcore.plugin.models import SigningService
 from pulpcore.plugin.serializers import (
     RelatedField,
     RepositorySerializer,
     RepositorySyncURLSerializer,
     validate_unknown_fields,
 )
+from pulpcore.plugin.util import get_url
 from pulpcore.plugin.viewsets import NamedModelViewSet
 
-from pulp_deb.app.models import AptReleaseSigningService, AptRepository
+from pulp_deb.app.models import (
+    AptRepositoryReleaseServiceOverride,
+    AptReleaseSigningService,
+    AptRepository,
+)
 
 from jsonschema import Draft7Validator
 from rest_framework import serializers
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from pulp_deb.app.schema import COPY_CONFIG_SCHEMA
+
+
+class ServiceOverrideField(serializers.DictField):
+    child = RelatedField(
+        view_name="signing-services-detail",
+        queryset=AptReleaseSigningService.objects.all(),
+        many=False,
+        required=False,
+        allow_null=True,
+    )
+
+    def to_representation(self, overrides):
+        return {
+            # Cast to parent class so get_url can look up resource url.
+            x.release_distribution: get_url(SigningService(x.signing_service.pk))
+            for x in overrides.all()
+        }
 
 
 class AptRepositorySerializer(RepositorySerializer):
@@ -28,12 +53,13 @@ class AptRepositorySerializer(RepositorySerializer):
         required=False,
         allow_null=True,
     )
-    signing_service_release_overrides = serializers.JSONField(
-        required=False,
+    signing_service_release_overrides = ServiceOverrideField(
         default=dict,
+        required=False,
         help_text=_(
             "A dictionary of Release distributions and the Signing Service URLs they should use."
-            'Example: {"bionic": "/pulp/api/v3/signing-services/433a1f70-c589-4413-a803-c50b842ea9b5/"}'
+            "Example: "
+            '{"bionic": "/pulp/api/v3/signing-services/433a1f70-c589-4413-a803-c50b842ea9b5/"}'
         ),
     )
 
@@ -44,20 +70,49 @@ class AptRepositorySerializer(RepositorySerializer):
         )
         model = AptRepository
 
-    def validate(self, data):
-        """
-        Validate that the Serializer contains valid data.
-        Ensure the signing services specified in signing_service_release_overrides exist, or error.
-        """
-        super().validate(data)
+    @transaction.atomic
+    def create(self, validated_data):
+        """Create an AptRepository, special handling for signing_service_release_overrides."""
+        overrides = validated_data.pop("signing_service_release_overrides", -1)
+        repo = super().create(validated_data)
 
-        field = "signing_service_release_overrides"
-        if field in data:
-            nmvs = NamedModelViewSet()
-            for _, value in data[field].items():
-                nmvs.get_resource(value, AptReleaseSigningService)
+        try:
+            self._update_overrides(repo, overrides)
+        except DRFValidationError as exc:
+            repo.delete()
+            raise exc
+        return repo
 
-        return data
+    def update(self, instance, validated_data):
+        """Update an AptRepository, special handling for signing_service_release_overrides."""
+        overrides = validated_data.pop("signing_service_release_overrides", -1)
+        with transaction.atomic():
+            self._update_overrides(instance, overrides)
+            instance = super().update(instance, validated_data)
+        return instance
+
+    def _update_overrides(self, repo, overrides):
+        """Update signing_service_release_overrides."""
+        if overrides == -1:
+            # Sentinel value, no updates
+            return
+
+        current = {x.release_distribution: x for x in repo.signing_service_release_overrides.all()}
+        # Intentionally only updates items the user specified.
+        for distro, service in overrides.items():
+            if not service and distro in current:  # the user wants to delete this override
+                current[distro].delete()
+            elif service:
+                signing_service = AptReleaseSigningService.objects.get(pk=service)
+                if distro in current:  # update
+                    current[distro] = signing_service
+                    current[distro].save()
+                else:  # create
+                    AptRepositoryReleaseServiceOverride(
+                        repository=repo,
+                        signing_service=signing_service,
+                        release_distribution=distro,
+                    ).save()
 
 
 class AptRepositorySyncURLSerializer(RepositorySyncURLSerializer):

@@ -165,11 +165,34 @@ The ``pulp_deb`` plugin allows you to sign the ``Release`` files created by the 
 
 .. important::
    We currently lack a workflow documentation for creating and using an ``AptReleaseSigningService``.
-   Until we get around to writing one, you can use the following resources to help you get started:
+   Until we get around to writing one, you can use the short version below.
+   
+The short version:
 
-   * The `pulpcore metadata signing docs`_ describe the process for creating an ``AsciiArmoredDetachedSigningService``, which is largely analagous to creating an ``AptReleaseSigningService``.
-   * The `signing service script example`_ used by the ``pulp_deb`` test suite.
+1. The `pulpcore metadata signing docs`_ describe the process for creating an ``AsciiArmoredDetachedSigningService``, which is largely analagous to creating an ``AptReleaseSigningService``.
+2. The public key must be imported to ``gpg`` so that Pulp can validate the signatures. ``gpg --import <public.gpg>``
+3. You must have a script available locally (like the `signing service script example`_ used by the ``pulp_deb`` test suite) to sign the ``Release`` file. It must:
 
+   1. Be executable by Pulp.
+   2. Accept one arg that is the location of the unsigned file.
+   3. Clearsign the file and write the output to ``$dir/InRelease``
+   4. Detached-sign the file and write the output to ``$dir/Release.gpg``
+   5. Print this output: ``{"signatures": {"inline": "/path/to/InRelease", "detached": "/path/to/Release.gpg"}}``
+   
+4. Register the script as a signing service:
+
+   ``/usr/local/bin/pulpcore-manager add-signing-service --class deb:AptReleaseSigningService <arbitrary_service_name> /path/to/script <public_key_fingerprint>``
+   
+5. You can now lookup the ``pulp_href`` for your signing service in the Pulp API:
+
+   ``/pulp/api/v3/signing-services/``
+   
+6. And use it when you Publish content. ``pulp_deb`` will call out to your script to sign the ``Release`` file and publish the signatures as part of the Publish action. The three ways you can specify the Signing Service are:
+
+   1. If you specify ``signing_service`` when creating the Publication, that service will sign all the Releases in the Publication.
+   2. You can specify that particular Release in a Repository use particular SigningServices by setting the ``signing_service_release_overrides`` field on the Repository. For example:
+      ``signing_service_release_overrides = {"bionic": "/pulp/api/v3/signing-services/433a1f70-c589-4413-a803-c50b842ea9b5/"}``
+   3. Finally, if you have set a ``signing_service`` on a Repository then the other Releases in that Repo will use that Service.
 
 .. _verbatim_publishing:
 
