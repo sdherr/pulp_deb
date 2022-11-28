@@ -1,11 +1,13 @@
 from gettext import gettext as _
 from pulpcore.plugin.serializers import (
+    RelatedField,
     RepositorySerializer,
     RepositorySyncURLSerializer,
     validate_unknown_fields,
 )
+from pulpcore.plugin.viewsets import NamedModelViewSet
 
-from pulp_deb.app.models import AptRepository
+from pulp_deb.app.models import AptReleaseSigningService, AptRepository
 
 from jsonschema import Draft7Validator
 from rest_framework import serializers
@@ -17,9 +19,46 @@ class AptRepositorySerializer(RepositorySerializer):
     A Serializer for AptRepository.
     """
 
+    signing_service = RelatedField(
+        help_text="A reference to an associated signing service. Used if "
+        "AptPublication.signing_service is not set",
+        view_name="signing-services-detail",
+        queryset=AptReleaseSigningService.objects.all(),
+        many=False,
+        required=False,
+        allow_null=True,
+    )
+    signing_service_release_overrides = serializers.JSONField(
+        required=False,
+        default=dict,
+        help_text=_(
+            "A dictionary of Release distributions and the Signing Service URLs they should use."
+            "Example: "
+            '{"bionic": "/pulp/api/v3/signing-services/433a1f70-c589-4413-a803-c50b842ea9b5/"}'
+        ),
+    )
+
     class Meta:
-        fields = RepositorySerializer.Meta.fields
+        fields = RepositorySerializer.Meta.fields + (
+            "signing_service",
+            "signing_service_release_overrides",
+        )
         model = AptRepository
+
+    def validate(self, data):
+        """
+        Validate that the Serializer contains valid data.
+        Ensure the signing services specified in signing_service_release_overrides exist, or error.
+        """
+        super().validate(data)
+
+        field = "signing_service_release_overrides"
+        if field in data:
+            nmvs = NamedModelViewSet()
+            for key, value in data[field].items():
+                nmvs.get_resource(value, AptReleaseSigningService)
+
+        return data
 
 
 class AptRepositorySyncURLSerializer(RepositorySyncURLSerializer):

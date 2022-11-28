@@ -7,6 +7,8 @@ from .content import (
     Package,
 )
 
+from .signing_service import AptReleaseSigningService
+
 from .structure_content import (
     Release,
     ReleaseArchitecture,
@@ -21,5 +23,3 @@ from .publication import AptDistribution, AptPublication, VerbatimPublication
 from .remote import AptRemote
 
 from .repository import AptRepository
-
-from .signing_service import AptReleaseSigningService
