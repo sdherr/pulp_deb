@@ -1,11 +1,12 @@
 from gettext import gettext as _
 from pulpcore.plugin.serializers import (
+    RelatedField,
     RepositorySerializer,
     RepositorySyncURLSerializer,
     validate_unknown_fields,
 )
 
-from pulp_deb.app.models import AptRepository
+from pulp_deb.app.models import AptReleaseSigningService, AptRepository
 
 from jsonschema import Draft7Validator
 from rest_framework import serializers
@@ -17,8 +18,18 @@ class AptRepositorySerializer(RepositorySerializer):
     A Serializer for AptRepository.
     """
 
+    signing_service = RelatedField(
+        help_text="A reference to an associated signing service. Used if "
+        "AptPublication.signing_service is not set",
+        view_name="signing-services-detail",
+        queryset=AptReleaseSigningService.objects.all(),
+        many=False,
+        required=False,
+        allow_null=True,
+    )
+
     class Meta:
-        fields = RepositorySerializer.Meta.fields
+        fields = RepositorySerializer.Meta.fields + ("signing_service",)
         model = AptRepository
 
 

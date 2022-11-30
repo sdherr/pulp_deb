@@ -1,8 +1,10 @@
+from django.db import models
 from pulpcore.plugin.models import Repository
 
 from pulpcore.plugin.repo_version_utils import remove_duplicates, validate_version_paths
 
 from pulp_deb.app.models import (
+    AptReleaseSigningService,
     AptRemote,
     GenericContent,
     InstallerFileIndex,
@@ -38,6 +40,10 @@ class AptRepository(Repository):
     REMOTE_TYPES = [
         AptRemote,
     ]
+
+    signing_service = models.ForeignKey(
+        AptReleaseSigningService, on_delete=models.PROTECT, null=True
+    )
 
     class Meta:
         default_related_name = "%(app_label)s_%(model_name)s"

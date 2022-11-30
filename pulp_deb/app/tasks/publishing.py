@@ -21,6 +21,7 @@ from pulpcore.plugin.models import (
 
 from pulp_deb.app.models import (
     AptPublication,
+    AptRepository,
     Package,
     PackageReleaseComponent,
     Release,
@@ -101,7 +102,7 @@ def publish(repository_version_pk, simple=False, structured=False, signing_servi
             publication.simple = simple
             publication.structured = structured
             publication.signing_service = signing_service
-            repository = repo_version.repository
+            repository = AptRepository.objects.get(pk=repo_version.repository.pk)
 
             if simple:
                 codename = "default"
@@ -126,6 +127,7 @@ def publish(repository_version_pk, simple=False, structured=False, signing_servi
                     description=repository.description,
                     label=repository.name,
                     version=str(repo_version.number),
+                    signing_service=repository.signing_service,
                 )
 
                 for package in Package.objects.filter(
@@ -168,6 +170,7 @@ def publish(repository_version_pk, simple=False, structured=False, signing_servi
                         version=release.version or str(repo_version.number),
                         suite=release.suite,
                         origin=release.origin,
+                        signing_service=(release.signing_service or repository.signing_service),
                     )
 
                     for prc in PackageReleaseComponent.objects.filter(
@@ -257,6 +260,7 @@ class _ReleaseHelper:
         description=None,
         suite=None,
         origin=None,
+        signing_service=None,
     ):
         self.publication = publication
         self.distribution = distribution
@@ -290,7 +294,7 @@ class _ReleaseHelper:
 
         self.architectures = architectures
         self.components = {component: _ComponentHelper(self, component) for component in components}
-        self.signing_service = publication.signing_service
+        self.signing_service = publication.signing_service or signing_service
 
     def add_metadata(self, metadata):
         artifact = metadata._artifacts.get()
