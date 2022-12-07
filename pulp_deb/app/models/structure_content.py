@@ -4,7 +4,7 @@ from django.db import models
 
 from pulpcore.plugin.models import Content
 
-from pulp_deb.app.models import AptReleaseSigningService, Package
+from pulp_deb.app.models import Package
 
 
 BOOL_CHOICES = [(True, "yes"), (False, "no")]
@@ -26,23 +26,11 @@ class Release(Content):
     origin = models.TextField(null=True)
     label = models.TextField(null=True)
     description = models.TextField(null=True)
-    signing_service = models.ForeignKey(
-        AptReleaseSigningService, on_delete=models.PROTECT, null=True
-    )
 
     class Meta:
         default_related_name = "%(app_label)s_%(model_name)s"
         unique_together = (
-            (
-                "codename",
-                "suite",
-                "distribution",
-                "version",
-                "origin",
-                "label",
-                "description",
-                "signing_service",
-            ),
+            ("codename", "suite", "distribution", "version", "origin", "label", "description"),
         )
 
 

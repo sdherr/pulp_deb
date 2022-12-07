@@ -10,14 +10,12 @@ from pulpcore.plugin.serializers import (
     ContentChecksumSerializer,
     MultipleArtifactContentSerializer,
     NoArtifactContentSerializer,
-    RelatedField,
     SingleArtifactContentSerializer,
     SingleArtifactContentUploadSerializer,
     DetailRelatedField,
 )
 
 from pulp_deb.app.models import (
-    AptReleaseSigningService,
     BasePackage,
     GenericContent,
     InstallerFileIndex,
@@ -646,15 +644,6 @@ class ReleaseSerializer(NoArtifactContentSerializer):
     origin = CharField(required=False, allow_null=True, default=None)
     label = CharField(required=False, allow_null=True, default=None)
     description = CharField(required=False, allow_null=True, default=None)
-    signing_service = RelatedField(
-        help_text="A reference to an associated signing service. Overrides "
-        "AptRepository.signing_service but not AptPublication.signing_service.",
-        view_name="signing-services-detail",
-        queryset=AptReleaseSigningService.objects.all(),
-        many=False,
-        required=False,
-        allow_null=True,
-    )
 
     class Meta(NoArtifactContentSerializer.Meta):
         model = Release
@@ -666,7 +655,6 @@ class ReleaseSerializer(NoArtifactContentSerializer):
             "origin",
             "label",
             "description",
-            "signing_service",
         )
 
 
