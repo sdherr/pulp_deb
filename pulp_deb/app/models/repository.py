@@ -1,6 +1,5 @@
 from django.db import models
 from pulpcore.plugin.models import Repository
-
 from pulpcore.plugin.repo_version_utils import remove_duplicates, validate_version_paths
 
 from pulp_deb.app.models import (
@@ -44,9 +43,22 @@ class AptRepository(Repository):
     signing_service = models.ForeignKey(
         AptReleaseSigningService, on_delete=models.PROTECT, null=True
     )
+    signing_service_release_overrides = models.JSONField(default=dict)
 
     class Meta:
         default_related_name = "%(app_label)s_%(model_name)s"
+
+    def release_signing_service(self, release):
+        """
+        Resolve and return the Signing Service specified in the overrides if there is one for this
+        release, else return self.signing_service.
+        """
+        from pulpcore.plugin.viewsets import NamedModelViewSet
+
+        if release.distribution in self.signing_service_release_overrides:
+            url = self.signing_service_release_overrides[release.distribution]
+            return NamedModelViewSet().get_resource(url, AptReleaseSigningService)
+        return self.signing_service
 
     def initialize_new_version(self, new_version):
         """

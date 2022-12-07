@@ -170,7 +170,7 @@ def publish(repository_version_pk, simple=False, structured=False, signing_servi
                         version=release.version or str(repo_version.number),
                         suite=release.suite,
                         origin=release.origin,
-                        signing_service=(release.signing_service or repository.signing_service),
+                        signing_service=repository.release_signing_service(release),
                     )
 
                     for prc in PackageReleaseComponent.objects.filter(
