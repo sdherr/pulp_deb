@@ -22,4 +22,4 @@ from .publication import AptDistribution, AptPublication, VerbatimPublication
 
 from .remote import AptRemote
 
-from .repository import AptRepository
+from .repository import AptRepository, AptRepositoryReleaseServiceOverride
